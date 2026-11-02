@@ -1,4 +1,4 @@
-# EcoTech
+# EcoTech — Unidad 3
 
 Programa de consola para empleados, departamentos, proyectos, horas, cuentas e informes. Incluye validaciones de Empleado y consulta del dólar observado.
 

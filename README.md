@@ -1,64 +1,128 @@
-# EcoTech — Unidad 3
+# Preparar y ejecutar
 
-Programa de consola para empleados, departamentos, proyectos, horas, cuentas e informes. Incluye validaciones de Empleado y consulta del dólar observado.
+Necesitas Python 3.10 o superior y Git. La configuración inicial utiliza
+SQLite, por lo que no necesitas instalar WampServer ni MariaDB.
 
-## Preparar y ejecutar
+Ejecuta los comandos en la terminal, uno por uno y en el orden indicado.
+Si un paso muestra un error, soluciónalo antes de continuar.
 
-Abre esta carpeta en VS Code. Usa Python 3.10 o superior. Si todavía no tienes un entorno, créalo con los comandos de tu sistema.
+# 1. Descargar el proyecto
 
-Linux / EndeavourOS:
+```bash
+git clone https://github.com/Faxi1r/IgnacioRios_POOS_Ecotech.git
+cd IgnacioRios_POOS_Ecotech
+```
+
+Si ya tienes el proyecto descargado, abre su carpeta en VS Code y selecciona
+Terminal → Nueva terminal. Debes estar en la carpeta que contiene
+`README.md`, `requirements.txt`, `scripts/` y `src/`.
+
+# 2. Crear el entorno de Python
+
+Esto crea la carpeta `.venv`, donde se instalarán las bibliotecas del proyecto.
+
+Linux:
 
 ```bash
 python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
-.venv/bin/python scripts/preparar_entorno.py
-.venv/bin/python -m src.main --semilla
-.venv/bin/python -m src.main
 ```
 
 Windows / PowerShell:
 
 ```powershell
 python -m venv .venv
+```
+
+Los siguientes comandos usan directamente el Python de `.venv`.
+No es necesario activar el entorno por separado.
+
+# 3. Instalar las dependencias
+
+Linux:
+
+```bash
+.venv/bin/python -m pip install -r requirements.txt
+```
+
+Windows / PowerShell:
+
+```powershell
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
+
+Espera a que termine la instalación antes de continuar.
+
+# 4. Crear el archivo .env y la clave de cifrado
+
+Este paso se realiza después de instalar las dependencias y antes de
+crear los datos de ejemplo o abrir el programa.
+
+Linux:
+
+```bash
+.venv/bin/python scripts/preparar_entorno.py
+```
+
+Windows / PowerShell:
+
+```powershell
 .\.venv\Scripts\python.exe scripts/preparar_entorno.py
+```
+
+El script copia la configuración de `.env.example` a un nuevo `.env`
+y genera una clave de cifrado. Si `.env` ya existe, lo conserva.
+
+No basta con cambiar el nombre de `.env.example`: también se necesita
+una clave válida, que este script genera.
+
+# 5. Crear la base de datos y cargar los ejemplos
+
+Linux:
+
+```bash
+.venv/bin/python -m src.main --semilla
+```
+
+Windows / PowerShell:
+
+```powershell
 .\.venv\Scripts\python.exe -m src.main --semilla
+```
+
+Con la configuración predeterminada, se crea `ecotech_uml8.db`,
+sus tablas y los datos de práctica.
+
+Cuentas de ejemplo:
+
+| Usuario | Contraseña inicial |
+|---|---|
+| admin_demo | Demo2026* |
+| ana_demo | Demo2026* |
+
+Repetir este comando no duplica los ejemplos ni restablece las contraseñas.
+
+# 6. Iniciar el programa
+
+Linux:
+
+```bash
+.venv/bin/python -m src.main
+```
+
+Windows / PowerShell:
+
+```powershell
 .\.venv\Scripts\python.exe -m src.main
 ```
 
-Selecciona el intérprete de .venv en VS Code. SQLite crea ecotech_uml8.db sin necesitar WampServer. El script genera .env con una clave propia; conserva uno existente. Si ya preparaste el entorno, puedes empezar por el comando de inicio.
+Ingresa una de las cuentas anteriores. La contraseña no se muestra
+mientras la escribes; es normalpara más seguridad.
 
-Cuentas iniciales de práctica: admin_demo y ana_demo, contraseña Demo2026*. La contraseña no aparece mientras escribes. Repetir --semilla no duplica ejemplos ni restablece contraseñas. Para una base sin ejemplos usa --crear-admin en lugar de --semilla.
+### Para abrirlo otro día
 
-## Qué probar
+Entra en la carpeta del proyecto y ejecuta solamente el comando del paso 6.
+No necesitas crear nuevamente el entorno, el `.env` ni los datos de ejemplo.
 
-- Registra un empleado: A se rechaza como nombre; Ana se acepta.
-- Un correo como ana@empresa..cl se rechaza; se vuelve a pedir solo ese campo.
-- La opción 7 del menú administrativo consulta el dólar. Muestra fecha del registro, CLP por USD y origen. Necesita Internet; los errores se muestran sin cerrar el sistema.
-- Los informes se exportan desde su menú y quedan en reportes/.
-
-## Configuración y bases existentes
-
-DB_ENGINE elige sqlite o mysql. DB_NAME indica el archivo SQLite o la base MySQL. DB_HOST, DB_PORT, DB_USER y DB_PASSWORD se usan con MySQL. ECOTECH_CLAVE_CIFRADO permite leer los datos cifrados. Las variables de la terminal tienen prioridad sobre .env.
-
-Si mantienes una base existente, conserva su .env y su clave. Antes de actualizar, corrige desde la versión anterior los nombres de una letra y correos que incumplan las reglas nuevas: también se revisan al recuperar empleados. Puedes practicar con un DB_NAME nuevo sin borrar la base anterior. No se realiza una migración automática de datos.
-
-Para MySQL/MariaDB crea una base nueva ecotech_uml8, concede permisos a tu usuario y completa .env. El programa crea las tablas. Cambiar el motor no copia los datos de SQLite. WampServer es una opción para disponer de ese servidor en Windows; phpMyAdmin sirve para administrarlo, no para ejecutar Python.
-
-## Comprobaciones
-
-Con el Python del entorno:
-
-```bash
-python -m src.main --comprobar-conexion
-python -m pip install -r requirements-dev.txt
-python scripts/verificar.py
-```
-
-En Windows usa .\.venv\Scripts\python.exe; en Linux, .venv/bin/python. Los tests usan SQLite temporal y respuestas HTTP simuladas. Los resultados guardados y el intento de consulta real están en docs/RESULTADOS_PRUEBAS.txt y docs/CONSULTA_HTTP.txt. No se probó contra un servidor MySQL real.
-
-## Archivos
-
-- src/dependencia/: ocho clases y reglas del dominio.
-- src/menus/: preguntas, opciones y mensajes.
-- src/persistencia/: conexión, tablas, DAO y semillas.
+Conserva el `.env` junto con tu base de datos: su clave permite leer los
+datos cifrados. No subas el `.env`, la carpeta `.venv` ni la base de datos
+a GitHub.

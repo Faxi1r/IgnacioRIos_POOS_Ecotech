@@ -7,8 +7,11 @@ RAIZ = Path(__file__).resolve().parents[1]
 class ArquitecturaTest(unittest.TestCase):
     def test_hay_una_sola_carpeta_de_clases(self):
         self.assertTrue((RAIZ / "src" / "dependencia").is_dir())
-        for carpeta in ("dominio", "servicios", "controllers", "repositories"):
+        for carpeta in ("dominio", "controllers", "repositories"):
             self.assertFalse((RAIZ / "src" / carpeta).exists())
+
+    def test_servicios_existen_para_los_permisos_de_clase5(self):
+        self.assertTrue((RAIZ / "src" / "servicios" / "permisos.py").exists())
 
     def test_dominio_no_importa_persistencia_ni_conectores(self):
         for archivo in (RAIZ / "src" / "dependencia").glob("*.py"):

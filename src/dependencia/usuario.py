@@ -7,8 +7,14 @@ from .validaciones import validar_id, validar_nombre_usuario
 class Usuario:
     """Una cuenta común puede trabajar con sus propios datos."""
 
-    def __init__(self, id_usuario: Optional[int], nombre_usuario: str,
-                 contrasena_hash: str = "", activo: bool = True):
+    def __init__(
+        self,
+        id_usuario: Optional[int],
+        nombre_usuario: str,
+        contrasena_hash: str = "",
+        activo: bool = True,
+        rol: str = "empleado",
+    ):
         self.id_usuario = validar_id(id_usuario, opcional=True)
         self.nombre_usuario = nombre_usuario
         if not isinstance(contrasena_hash, str):
@@ -17,6 +23,15 @@ class Usuario:
             raise ValueError("El estado de la cuenta debe ser verdadero o falso.")
         self._contrasena_hash = contrasena_hash
         self._activo = activo
+        self.rol = self.validar_rol(rol)
+
+    ROLES = ("admin", "empleado")
+
+    @classmethod
+    def validar_rol(cls, rol):
+        if not isinstance(rol, str) or rol not in cls.ROLES:
+            raise ValueError("Rol no permitido.")
+        return rol
 
     @property
     def nombre_usuario(self):

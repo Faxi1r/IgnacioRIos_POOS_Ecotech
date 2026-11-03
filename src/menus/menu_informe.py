@@ -1,69 +1,89 @@
-from src.persistencia import (
-    DepartamentoDAO, EmpleadoDAO, InformeDAO, ProyectoDAO, RegistroTiempoDAO,
-)
+from src.servicios import gestion_informes
+from src.servicios.permisos import exigir_admin
 from .comunes import (
-    confirmar, informar, mostrar_lista, pedir_objeto, pedir_texto, ruta_exportacion, submenu,
+    confirmar,
+    informar,
+    mostrar_lista,
+    pedir_objeto,
+    pedir_texto,
+    ruta_exportacion,
+    submenu,
 )
 
 
-def preparar_informe(admin, tipo):
-    return admin.generar_informe(tipo, EmpleadoDAO.listar(), DepartamentoDAO.listar(),
-                                ProyectoDAO.listar(), RegistroTiempoDAO.listar())
-
-
-def generar_informe(admin):
-    informe = preparar_informe(admin, pedir_texto("Título del informe: ", "El tipo de informe"))
-    InformeDAO.insertar(informe)
+def generar_informe(sesion):
+    exigir_admin(sesion)
+    informe = gestion_informes.generar(
+        sesion, pedir_texto("Título del informe: ", "El tipo de informe")
+    )
     print(f"Informe guardado. Id: {informe.id_informe}.")
     print(informe._texto_legible())
 
 
-def seleccionar_informe():
-    return pedir_objeto("Id del informe: ", InformeDAO.buscar_por_id, "un informe")
+def seleccionar_informe(sesion):
+    exigir_admin(sesion)
+    return pedir_objeto(
+        "Id del informe: ",
+        lambda identificador: gestion_informes.buscar_por_id(sesion, identificador),
+        "un informe",
+    )
 
 
-def buscar_informe():
-    print(seleccionar_informe()._texto_legible())
+def buscar_informe(sesion):
+    print(seleccionar_informe(sesion)._texto_legible())
 
 
-def actualizar_informe(admin):
-    anterior = seleccionar_informe()
-    if anterior.creado_por != admin.id_usuario:
+def actualizar_informe(sesion):
+    exigir_admin(sesion)
+    anterior = seleccionar_informe(sesion)
+    if anterior.creado_por != sesion["id"]:
         print("Solo el autor puede recalcular su informe. Puede generar uno nuevo con su cuenta.")
         return
-    if not confirmar("¿Recalcular con los datos actuales? Se reemplazará el contenido guardado"):
-        return
-    tipo = pedir_texto("Nuevo título (Enter para mantener): ", "El tipo", opcional=True) or anterior.tipo
-    informe = preparar_informe(admin, tipo)
-    informe.id_informe = anterior.id_informe
-    informar(InformeDAO.actualizar(informe), "Informe recalculado; conserva su autor.", "El informe ya no existe.")
+    if confirmar("¿Recalcular con los datos actuales? Se reemplazará el contenido guardado"):
+        tipo = (
+            pedir_texto("Nuevo título (Enter para mantener): ", "El tipo", opcional=True)
+            or anterior.tipo
+        )
+        informar(
+            gestion_informes.recalcular(sesion, anterior.id_informe, tipo),
+            "Informe recalculado; conserva su autor.",
+            "El informe ya no existe.",
+        )
 
 
-def exportar_informe(extension):
-    informe = seleccionar_informe()
-    ruta = ruta_exportacion(pedir_texto("Nombre del archivo: ", "El nombre del archivo", 80), extension)
+def exportar_informe(sesion, extension):
+    informe = seleccionar_informe(sesion)
+    ruta = ruta_exportacion(
+        pedir_texto("Nombre del archivo: ", "El nombre del archivo", 80), extension
+    )
     if ruta.exists() and not confirmar("El archivo ya existe. ¿Reemplazarlo?"):
         return
-    if extension == ".pdf":
-        informe.exportar_pdf(str(ruta))
-    else:
-        informe.exportar_excel(str(ruta))
+    gestion_informes.exportar(sesion, informe.id_informe, ruta, extension)
     print(f"Informe exportado en {ruta}.")
 
 
-def eliminar_informe():
-    informe = seleccionar_informe()
+def eliminar_informe(sesion):
+    informe = seleccionar_informe(sesion)
     if confirmar(f"¿Eliminar el informe {informe.id_informe}?"):
-        informar(InformeDAO.eliminar(informe.id_informe), "Informe eliminado.", "El informe ya no existe.")
+        informar(
+            gestion_informes.eliminar(sesion, informe.id_informe),
+            "Informe eliminado.",
+            "El informe ya no existe.",
+        )
 
 
-def menu_informe(admin):
-    submenu("Informes", {
-        "1": ("Generar informe general", lambda: generar_informe(admin)),
-        "2": ("Listar", lambda: mostrar_lista("Informes", InformeDAO.listar())),
-        "3": ("Buscar y leer", buscar_informe),
-        "4": ("Recalcular un informe propio", lambda: actualizar_informe(admin)),
-        "5": ("Exportar a PDF", lambda: exportar_informe(".pdf")),
-        "6": ("Exportar a Excel", lambda: exportar_informe(".xlsx")),
-        "7": ("Eliminar", eliminar_informe),
-    }, admin, "informes")
+def menu_informe(sesion):
+    submenu(
+        "Informes",
+        {
+            "1": ("Generar informe general", lambda: generar_informe(sesion)),
+            "2": ("Listar", lambda: mostrar_lista("Informes", gestion_informes.listar(sesion))),
+            "3": ("Buscar y leer", lambda: buscar_informe(sesion)),
+            "4": ("Recalcular un informe propio", lambda: actualizar_informe(sesion)),
+            "5": ("Exportar a PDF", lambda: exportar_informe(sesion, ".pdf")),
+            "6": ("Exportar a Excel", lambda: exportar_informe(sesion, ".xlsx")),
+            "7": ("Eliminar", lambda: eliminar_informe(sesion)),
+        },
+        sesion,
+        "informes",
+    )

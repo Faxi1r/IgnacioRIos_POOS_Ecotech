@@ -1,4 +1,5 @@
-"""Inicio del programa. Los menús piden datos y los DAO se encargan de guardarlos."""
+"""Inicio del programa. Los servicios revisan los permisos antes de usar los DAO."""
+
 import argparse
 import getpass
 import logging
@@ -14,11 +15,13 @@ from src.menus.menu_informe import menu_informe
 from src.menus.menu_proyecto import menu_proyecto
 from src.menus.menu_registro import menu_registro
 from src.menus.menu_usuario import menu_usuario
-from src.menus.menu_usuario import crear_usuario
-from src.menus.menu_personal import menu_personal
+from src.menus.menu_empleado import pedir_datos_empleado
+from src.menus.comunes import pedir_nombre_usuario_nuevo, pedir_contrasena, ejecutar
+from src.menus.menu_personal import menu_personal, ver_mis_datos, ver_mis_horas
 from src.menus.menu_indicadores import consultar_dolar
 from src.menus.comunes import acceso_vigente
-from src.dependencia import Administrador
+from src.servicios.autenticacion import autenticar, cerrar_sesion
+from src.servicios.preparacion import crear_admin_inicial
 from src.persistencia import ConexionError, DAOError, UsuarioDAO, crear_tablas
 from src.persistencia.conexion import RAIZ_PROYECTO, describir_conexion
 
@@ -26,7 +29,7 @@ from src.persistencia.conexion import RAIZ_PROYECTO, describir_conexion
 def iniciar_sesion():
     for _ in range(3):
         nombre = input("Nombre de usuario: ").strip()
-        usuario = UsuarioDAO.autenticar(nombre, getpass.getpass("Contraseña: "))
+        usuario = autenticar(nombre, getpass.getpass("Contraseña: "))
         if usuario:
             return usuario
         print("Usuario o contraseña incorrectos.")
@@ -34,45 +37,65 @@ def iniciar_sesion():
     return None
 
 
-def menu_principal(usuario):
-    if not isinstance(usuario, Administrador):
-        menu_personal(usuario)
-        return
+def menu_principal(sesion):
     opciones = {
-        "1": ("Empleados", lambda: menu_empleado(usuario)),
-        "2": ("Departamentos", lambda: menu_departamento(usuario)),
-        "3": ("Proyectos", lambda: menu_proyecto(usuario)),
-        "4": ("Registro de horas", lambda: menu_registro(usuario)),
-        "5": ("Usuarios y administradores", lambda: menu_usuario(usuario)),
-        "6": ("Informes", lambda: menu_informe(usuario)),
-        "7": ("Consultar dólar observado", consultar_dolar),
+        "1": ("Mi ficha", lambda: ver_mis_datos(sesion)),
+        "2": ("Mis registros", lambda: ver_mis_horas(sesion)),
+        "3": ("Consultar dólar observado", consultar_dolar),
+        "11": ("Editar mis datos y otras opciones personales", lambda: menu_personal(sesion)),
     }
+    if sesion["rol"] == "admin":
+        opciones.update(
+            {
+                "4": ("Administrar empleados", lambda: menu_empleado(sesion)),
+                "5": ("Departamentos", lambda: menu_departamento(sesion)),
+                "6": ("Proyectos", lambda: menu_proyecto(sesion)),
+                "7": ("Registros de todo el sistema", lambda: menu_registro(sesion)),
+                "8": ("Cuentas de usuario", lambda: menu_usuario(sesion)),
+                "10": ("Informes", lambda: menu_informe(sesion)),
+            }
+        )
     while True:
-        if not acceso_vigente(usuario, "mi_cuenta"):
-            return
+        if not acceso_vigente(sesion, "mi_cuenta"):
+            cerrar_sesion(sesion)
+            return "cerrar"
         print("\n===== ECOTECH =====")
-        for numero, (nombre, _) in opciones.items():
-            print(f"{numero}. {nombre}")
+        for numero in sorted(opciones, key=int):
+            print(f"{numero}. {opciones[numero][0]}")
+        print("9. Cerrar sesión")
         print("0. Salir")
         opcion = input("Seleccione una opción: ").strip()
-        if opcion == "0":
-            return
+        if opcion in ("0", "9"):
+            cerrar_sesion(sesion)
+            return "salir" if opcion == "0" else "cerrar"
         if opcion in opciones:
-            opciones[opcion][1]()
+            if acceso_vigente(sesion, "mi_cuenta"):
+                ejecutar(opciones[opcion][1])
         else:
-            print("La opción no existe. Seleccione un número del menú.")
+            print("La opción no está disponible para esta cuenta.")
 
 
 def main():
     parser = argparse.ArgumentParser(description="Sistema EcoTech por consola")
     modo = parser.add_mutually_exclusive_group()
-    modo.add_argument("--comprobar-conexion", action="store_true", help="Comprobar qué motor responde")
-    modo.add_argument("--demo", action="store_true", help="Probar CRUD y relaciones con datos ficticios")
-    modo.add_argument("--semilla", action="store_true", help="Cargar datos ficticios sin duplicarlos")
-    modo.add_argument("--crear-admin", action="store_true", help="Crear el primer administrador de una base nueva")
+    modo.add_argument(
+        "--comprobar-conexion", action="store_true", help="Comprobar qué motor responde"
+    )
+    modo.add_argument(
+        "--demo", action="store_true", help="Probar CRUD y relaciones con datos ficticios"
+    )
+    modo.add_argument(
+        "--semilla", action="store_true", help="Cargar datos ficticios sin duplicarlos"
+    )
+    modo.add_argument(
+        "--crear-admin", action="store_true", help="Crear el primer administrador de una base nueva"
+    )
     argumentos = parser.parse_args()
-    logging.basicConfig(filename=str(RAIZ_PROYECTO / "ecotech.log"), level=logging.WARNING,
-                        format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    logging.basicConfig(
+        filename=str(RAIZ_PROYECTO / "ecotech.log"),
+        level=logging.WARNING,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
     try:
         print(describir_conexion())
         if argumentos.comprobar_conexion:
@@ -80,26 +103,38 @@ def main():
         crear_tablas()
         if argumentos.demo:
             from src.demostracion import ejecutar_demostracion
+
             ejecutar_demostracion()
         elif argumentos.semilla:
             from src.persistencia.semilla_bd import cargar_semilla
+
             cargar_semilla()
         elif argumentos.crear_admin:
             if UsuarioDAO.hay_administradores():
                 print("Ya existe un administrador. Inicie sesión para crear otras cuentas.")
                 return 1
-            crear_usuario(es_admin=True)
+            print("Prepare la cuenta y la ficha del primer administrador.")
+            nombre = pedir_nombre_usuario_nuevo()
+            contrasena = pedir_contrasena()
+            empleado = pedir_datos_empleado()
+            crear_admin_inicial(nombre, contrasena, empleado)
+            print("Primer administrador creado y vinculado a su empleado.")
         else:
             if not UsuarioDAO.hay_administradores():
-                print("Primero ejecute python -m src.main --crear-admin, o use --semilla para practicar.")
+                print(
+                    "Primero ejecute python -m src.main --crear-admin, o use --semilla para practicar."
+                )
                 return 1
             print("En un formulario puede usar Ctrl+C para cancelar la operación.")
-            usuario = iniciar_sesion()
-            if usuario is None:
-                return 1
-            print(f"Bienvenido, {usuario.nombre_usuario}.")
-            menu_principal(usuario)
-    except (ConexionError, DAOError, ValueError) as error:
+            while True:
+                sesion = iniciar_sesion()
+                if sesion is None:
+                    return 1
+                print(f"Bienvenido, {sesion['nombre_usuario']}.")
+                if menu_principal(sesion) == "salir":
+                    break
+                print("Sesión cerrada. Puede ingresar con otra cuenta.")
+    except (ConexionError, DAOError, ValueError, PermissionError) as error:
         print(f"No fue posible continuar: {error}")
         return 1
     except (KeyboardInterrupt, EOFError):

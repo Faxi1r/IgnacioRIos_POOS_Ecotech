@@ -3,7 +3,14 @@ import unittest
 from datetime import date
 
 from src.dependencia import (
-    Administrador, Departamento, Empleado, Informe, Proyecto, RegistroDeTiempo, Seguridad, Usuario,
+    Administrador,
+    Departamento,
+    Empleado,
+    Informe,
+    Proyecto,
+    RegistroDeTiempo,
+    Seguridad,
+    Usuario,
 )
 from tests.apoyo import empleado
 
@@ -17,10 +24,21 @@ class ModeloTest(unittest.TestCase):
 
     def test_operaciones_publicas_corresponden_al_uml(self):
         esperadas = {
-            Usuario: {"establecer_contrasena", "autenticar", "puede_acceder", "desactivar"},
+            Usuario: {
+                "establecer_contrasena",
+                "autenticar",
+                "puede_acceder",
+                "desactivar",
+                "validar_rol",
+            },
             Administrador: {"puede_acceder", "generar_informe"},
             Empleado: {"validar_datos", "registrar_horas", "validar_nombre", "validar_correo"},
-            Departamento: {"validar_datos", "agregar_empleado", "quitar_empleado", "asignar_gerente"},
+            Departamento: {
+                "validar_datos",
+                "agregar_empleado",
+                "quitar_empleado",
+                "asignar_gerente",
+            },
             Proyecto: {"validar_datos", "asignar_empleado", "desasignar_empleado"},
             RegistroDeTiempo: {"validar_datos"},
             Informe: {"generar", "exportar_pdf", "exportar_excel"},
@@ -28,13 +46,19 @@ class ModeloTest(unittest.TestCase):
         }
         for clase, nombres in esperadas.items():
             with self.subTest(clase=clase.__name__):
-                reales = {n for n, valor in vars(clase).items()
-                          if not n.startswith("_") and (inspect.isfunction(valor) or isinstance(valor, classmethod))}
+                reales = {
+                    n
+                    for n, valor in vars(clase).items()
+                    if not n.startswith("_")
+                    and (inspect.isfunction(valor) or isinstance(valor, classmethod))
+                }
                 self.assertEqual(reales, nombres)
 
     def test_registrar_horas_recibe_la_fecha_como_en_el_uml(self):
-        self.assertEqual(list(inspect.signature(Empleado.registrar_horas).parameters),
-                         ["self", "fecha", "proyecto", "horas", "descripcion"])
+        self.assertEqual(
+            list(inspect.signature(Empleado.registrar_horas).parameters),
+            ["self", "fecha", "proyecto", "horas", "descripcion"],
+        )
 
     def test_permisos_cambian_segun_el_tipo_de_cuenta(self):
         cuentas = [Usuario(None, "normal"), Administrador(None, "admin")]
@@ -55,8 +79,14 @@ class ModeloTest(unittest.TestCase):
 
     def test_datos_personales_se_validan_al_modificarlos(self):
         persona = empleado()
-        for campo, valor in [("nombre", ""), ("correo", "sin-arroba"), ("direccion", ""),
-                             ("telefono", ""), ("telefono", "abcdef"), ("fecha_inicio_contrato", None)]:
+        for campo, valor in [
+            ("nombre", ""),
+            ("correo", "sin-arroba"),
+            ("direccion", ""),
+            ("telefono", ""),
+            ("telefono", "abcdef"),
+            ("fecha_inicio_contrato", None),
+        ]:
             with self.subTest(campo=campo), self.assertRaises(ValueError):
                 setattr(persona, campo, valor)
 

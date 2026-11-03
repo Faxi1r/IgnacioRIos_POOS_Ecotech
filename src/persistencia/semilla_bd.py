@@ -1,9 +1,23 @@
 """Datos ficticios para practicar. Repetir la carga no los duplica."""
+
 from datetime import date
 
-from src.dependencia import Administrador, Departamento, Empleado, Proyecto, RegistroDeTiempo, Usuario
+from src.dependencia import (
+    Administrador,
+    Departamento,
+    Empleado,
+    Proyecto,
+    RegistroDeTiempo,
+    Usuario,
+)
 from src.persistencia import (
-    DepartamentoDAO, EmpleadoDAO, InformeDAO, ProyectoDAO, RegistroTiempoDAO, UsuarioDAO, crear_tablas,
+    DepartamentoDAO,
+    EmpleadoDAO,
+    InformeDAO,
+    ProyectoDAO,
+    RegistroTiempoDAO,
+    UsuarioDAO,
+    crear_tablas,
 )
 
 CLAVE_DEMO = "Demo2026*"  # Solo para las cuentas de práctica.
@@ -13,7 +27,7 @@ def cargar_semilla():
     crear_tablas()
     admin = UsuarioDAO.buscar_por_nombre("admin_demo")
     if admin is None:
-        admin = Administrador(None, "admin_demo")
+        admin = Administrador(None, "admin_demo", rol="admin")
         admin.establecer_contrasena(CLAVE_DEMO)
         UsuarioDAO.insertar(admin)
     if not isinstance(admin, Administrador) or not admin.activo:
@@ -21,7 +35,7 @@ def cargar_semilla():
 
     cuenta_ana = UsuarioDAO.buscar_por_nombre("ana_demo")
     if cuenta_ana is None:
-        cuenta_ana = Usuario(None, "ana_demo")
+        cuenta_ana = Usuario(None, "ana_demo", rol="empleado")
         cuenta_ana.establecer_contrasena(CLAVE_DEMO)
         UsuarioDAO.insertar(cuenta_ana)
 
@@ -32,13 +46,53 @@ def cargar_semilla():
     ]:
         empleado = EmpleadoDAO.buscar_por_identificacion(identificacion)
         if empleado is None:
-            empleado = Empleado(None, identificacion, nombre, correo, 1000000,
-                                "Calle de Ejemplo 123", telefono, date(2026, 3, 1))
+            empleado = Empleado(
+                None,
+                identificacion,
+                nombre,
+                correo,
+                1000000,
+                "Calle de Ejemplo 123",
+                telefono,
+                date(2026, 3, 1),
+            )
             EmpleadoDAO.insertar(empleado)
         empleados.append(empleado)
-    # Ana tiene cuenta; Luis puede trabajar sin necesitar acceso al programa.
-    if empleados[0].usuario is None and cuenta_ana.activo:
-        EmpleadoDAO.vincular_cuenta(empleados[0].id_empleado, cuenta_ana.id_usuario)
+    cuenta_luis = UsuarioDAO.buscar_por_nombre("luis_demo")
+    if cuenta_luis is None:
+        cuenta_luis = Usuario(None, "luis_demo", rol="empleado")
+        cuenta_luis.establecer_contrasena(CLAVE_DEMO)
+        UsuarioDAO.insertar(cuenta_luis)
+
+    # El administrador también necesita su propia ficha.
+    ficha_admin = EmpleadoDAO.buscar_por_identificacion("DEMO0003")
+    if ficha_admin is None:
+        ficha_admin = Empleado(
+            None,
+            "DEMO0003",
+            "Administrador Demo",
+            "admin@ecotech.example",
+            1000000,
+            "Calle de Ejemplo 123",
+            "+56 9 1111 2222",
+            date(2026, 3, 1),
+        )
+        EmpleadoDAO.insertar(ficha_admin)
+    for cuenta, ficha in [
+        (admin, ficha_admin),
+        (cuenta_ana, empleados[0]),
+        (cuenta_luis, empleados[1]),
+    ]:
+        rol_esperado = "admin" if cuenta.nombre_usuario == "admin_demo" else "empleado"
+        if cuenta.rol != rol_esperado:
+            raise ValueError(
+                f"La cuenta {cuenta.nombre_usuario} tiene otro rol; la semilla no lo cambia."
+            )
+        vinculado = EmpleadoDAO.buscar_por_usuario(cuenta.id_usuario)
+        if vinculado is None and ficha.usuario is None and cuenta.activo:
+            EmpleadoDAO.vincular_cuenta(ficha.id_empleado, cuenta.id_usuario)
+        elif vinculado is None:
+            print(f"Revise el vínculo de {cuenta.nombre_usuario}; no se reemplazó ninguna cuenta.")
 
     departamento = DepartamentoDAO.buscar_por_nombre("[DEMO] Tecnología")
     if departamento is None:
@@ -47,29 +101,57 @@ def cargar_semilla():
 
     proyecto = ProyectoDAO.buscar_por_nombre("[DEMO] Ahorro de energía")
     if proyecto is None:
-        proyecto = ProyectoDAO.insertar(Proyecto(None, "[DEMO] Ahorro de energía",
-                                                "Medir el consumo de la oficina", date(2026, 3, 1)))
-    for empleado, horas, tarea in zip(empleados, [4, 2.5], ["Semilla: desarrollo", "Semilla: pruebas"]):
+        proyecto = ProyectoDAO.insertar(
+            Proyecto(
+                None, "[DEMO] Ahorro de energía", "Medir el consumo de la oficina", date(2026, 3, 1)
+            )
+        )
+    for empleado, horas, tarea in zip(
+        empleados, [4, 2.5], ["Semilla: desarrollo", "Semilla: pruebas"]
+    ):
         ProyectoDAO.asignar_empleado(proyecto.id_proyecto, empleado.id_empleado)
         registros = RegistroTiempoDAO.listar_por_empleado(empleado.id_empleado)
-        existe = any(r.id_proyecto == proyecto.id_proyecto and r.fecha == date(2026, 3, 16)
-                     and r.descripcion_tareas == tarea for r in registros)
+        existe = any(
+            r.id_proyecto == proyecto.id_proyecto
+            and r.fecha == date(2026, 3, 16)
+            and r.descripcion_tareas == tarea
+            for r in registros
+        )
         if not existe:
-            RegistroTiempoDAO.insertar(RegistroDeTiempo(None, date(2026, 3, 16), horas, tarea,
-                                                       empleado.id_empleado, proyecto.id_proyecto))
+            RegistroTiempoDAO.insertar(
+                RegistroDeTiempo(
+                    None,
+                    date(2026, 3, 16),
+                    horas,
+                    tarea,
+                    empleado.id_empleado,
+                    proyecto.id_proyecto,
+                )
+            )
 
-    if not any(i.tipo == "Resumen Demo" and i.creado_por == admin.id_usuario for i in InformeDAO.listar()):
-        InformeDAO.insertar(admin.generar_informe(
-            "Resumen Demo", EmpleadoDAO.listar(), DepartamentoDAO.listar(),
-            ProyectoDAO.listar(), RegistroTiempoDAO.listar()))
+    if not any(
+        i.tipo == "Resumen Demo" and i.creado_por == admin.id_usuario for i in InformeDAO.listar()
+    ):
+        InformeDAO.insertar(
+            admin.generar_informe(
+                "Resumen Demo",
+                EmpleadoDAO.listar(),
+                DepartamentoDAO.listar(),
+                ProyectoDAO.listar(),
+                RegistroTiempoDAO.listar(),
+            )
+        )
 
     cantidades = {
-        "usuarios": len(UsuarioDAO.listar()), "empleados": len(EmpleadoDAO.listar()),
-        "departamentos": len(DepartamentoDAO.listar()), "proyectos": len(ProyectoDAO.listar()),
-        "registros": len(RegistroTiempoDAO.listar()), "informes": len(InformeDAO.listar()),
+        "usuarios": len(UsuarioDAO.listar()),
+        "empleados": len(EmpleadoDAO.listar()),
+        "departamentos": len(DepartamentoDAO.listar()),
+        "proyectos": len(ProyectoDAO.listar()),
+        "registros": len(RegistroTiempoDAO.listar()),
+        "informes": len(InformeDAO.listar()),
     }
     print(f"Semilla revisada. Cantidades actuales: {cantidades}")
-    print("Cuentas de práctica: admin_demo y ana_demo. Clave inicial: Demo2026*.")
+    print("Cuentas de práctica: admin_demo, ana_demo y luis_demo. Clave inicial: Demo2026*.")
     print("Si ya cambió sus contraseñas, se mantienen las que usted eligió.")
     return cantidades
 

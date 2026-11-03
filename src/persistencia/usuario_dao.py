@@ -2,27 +2,37 @@ from src.dependencia import Administrador, Usuario
 from .conexion import marcador_sql
 from .dao_util import DAOError, exigir_guardado, exigir_nuevo, sesion_bd
 
-_SELECT = ("SELECT u.id_usuario, u.nombre_usuario, u.contrasena_hash, u.activo, a.id_usuario "
-           "FROM usuario u LEFT JOIN administrador a ON a.id_usuario = u.id_usuario")
+_SELECT = (
+    "SELECT u.id_usuario, u.nombre_usuario, u.contrasena_hash, u.activo, a.id_usuario, u.rol "
+    "FROM usuario u LEFT JOIN administrador a ON a.id_usuario = u.id_usuario"
+)
 
 
 class UsuarioDAO:
     @staticmethod
     def _armar(fila):
-        clase = Administrador if fila[4] is not None else Usuario
-        return clase(fila[0], fila[1], fila[2], bool(fila[3]))
+        rol = Usuario.validar_rol(fila[5])
+        if (rol == "admin") != (fila[4] is not None):
+            raise DAOError("El rol no coincide con el tipo de cuenta guardado.")
+        clase = Administrador if rol == "admin" else Usuario
+        return clase(fila[0], fila[1], fila[2], bool(fila[3]), rol)
 
     @staticmethod
     def insertar(usuario):
         if not isinstance(usuario, Usuario):
             raise ValueError("Aquí se guardan cuentas de usuario.")
+        Usuario.validar_rol(usuario.rol)
+        if (usuario.rol == "admin") != isinstance(usuario, Administrador):
+            raise ValueError("El rol debe coincidir con el tipo de cuenta.")
         exigir_nuevo(usuario.id_usuario, "El usuario")
         if not usuario.contrasena_hash:
             raise DAOError("Establezca una contraseña antes de guardar la cuenta.")
         p = marcador_sql()
         with sesion_bd() as cursor:
-            cursor.execute(f"INSERT INTO usuario (nombre_usuario, contrasena_hash, activo) VALUES ({p}, {p}, {p})",
-                           (usuario.nombre_usuario, usuario.contrasena_hash, int(usuario.activo)))
+            cursor.execute(
+                f"INSERT INTO usuario (nombre_usuario, contrasena_hash, activo, rol) VALUES ({p}, {p}, {p}, {p})",
+                (usuario.nombre_usuario, usuario.contrasena_hash, int(usuario.activo), usuario.rol),
+            )
             nuevo_id = cursor.lastrowid
             if isinstance(usuario, Administrador):
                 cursor.execute(f"INSERT INTO administrador (id_usuario) VALUES ({p})", (nuevo_id,))
@@ -39,8 +49,10 @@ class UsuarioDAO:
     @staticmethod
     def buscar_por_nombre(nombre_usuario):
         with sesion_bd() as cursor:
-            cursor.execute(f"{_SELECT} WHERE u.nombre_usuario = {marcador_sql()}",
-                           (nombre_usuario.strip().lower(),))
+            cursor.execute(
+                f"{_SELECT} WHERE u.nombre_usuario = {marcador_sql()}",
+                (nombre_usuario.strip().lower(),),
+            )
             fila = cursor.fetchone()
         return UsuarioDAO._armar(fila) if fila else None
 
@@ -69,19 +81,69 @@ class UsuarioDAO:
         exigir_guardado(usuario.id_usuario, "El usuario")
         p = marcador_sql()
         with sesion_bd() as cursor:
-            cursor.execute(f"SELECT u.activo, a.id_usuario FROM usuario u LEFT JOIN administrador a "
-                           f"ON a.id_usuario = u.id_usuario WHERE u.id_usuario = {p}", (usuario.id_usuario,))
+            cursor.execute(
+                f"SELECT u.activo, a.id_usuario, u.rol FROM usuario u LEFT JOIN administrador a "
+                f"ON a.id_usuario = u.id_usuario WHERE u.id_usuario = {p}",
+                (usuario.id_usuario,),
+            )
             anterior = cursor.fetchone()
             if anterior is None:
                 return False
+            if usuario.rol != anterior[2]:
+                raise DAOError("El rol de una cuenta no se cambia desde actualizar.")
             if bool(anterior[1] is not None) != isinstance(usuario, Administrador):
                 raise DAOError("El tipo de una cuenta no se cambia desde actualizar.")
             if anterior[0] and not usuario.activo and anterior[1] is not None:
-                cursor.execute("SELECT COUNT(*) FROM administrador a JOIN usuario u ON u.id_usuario = a.id_usuario "
-                               "WHERE u.activo = 1")
+                cursor.execute(
+                    "SELECT COUNT(*) FROM administrador a JOIN usuario u ON u.id_usuario = a.id_usuario "
+                    "WHERE u.activo = 1"
+                )
                 if cursor.fetchone()[0] <= 1:
                     raise DAOError("Debe quedar al menos un administrador activo.")
-            cursor.execute(f"UPDATE usuario SET nombre_usuario = {p}, contrasena_hash = {p}, activo = {p} "
-                           f"WHERE id_usuario = {p}",
-                           (usuario.nombre_usuario, usuario.contrasena_hash, int(usuario.activo), usuario.id_usuario))
+            cursor.execute(
+                f"UPDATE usuario SET nombre_usuario = {p}, contrasena_hash = {p}, activo = {p} "
+                f"WHERE id_usuario = {p}",
+                (
+                    usuario.nombre_usuario,
+                    usuario.contrasena_hash,
+                    int(usuario.activo),
+                    usuario.id_usuario,
+                ),
+            )
             return cursor.rowcount > 0
+
+    @staticmethod
+    def insertar_vinculado(usuario, id_empleado):
+        if not isinstance(usuario, Usuario):
+            raise ValueError("Aquí se guardan cuentas de usuario.")
+        Usuario.validar_rol(usuario.rol)
+        if (usuario.rol == "admin") != isinstance(usuario, Administrador):
+            raise ValueError("El rol debe coincidir con el tipo de cuenta.")
+        exigir_nuevo(usuario.id_usuario, "El usuario")
+        if not usuario.contrasena_hash:
+            raise DAOError("Establezca una contraseña antes de guardar la cuenta.")
+        p = marcador_sql()
+        with sesion_bd() as cursor:
+            cursor.execute(
+                f"SELECT id_usuario FROM empleado WHERE id_empleado = {p}", (id_empleado,)
+            )
+            fila = cursor.fetchone()
+            if fila is None or fila[0] is not None:
+                raise DAOError("Seleccione un empleado existente y sin cuenta.")
+            cursor.execute(
+                f"INSERT INTO usuario (nombre_usuario, contrasena_hash, activo, rol) "
+                f"VALUES ({p}, {p}, {p}, {p})",
+                (usuario.nombre_usuario, usuario.contrasena_hash, int(usuario.activo), usuario.rol),
+            )
+            nuevo_id = cursor.lastrowid
+            if usuario.rol == "admin":
+                cursor.execute(f"INSERT INTO administrador (id_usuario) VALUES ({p})", (nuevo_id,))
+            cursor.execute(
+                f"UPDATE empleado SET id_usuario = {p} "
+                f"WHERE id_empleado = {p} AND id_usuario IS NULL",
+                (nuevo_id, id_empleado),
+            )
+            if cursor.rowcount != 1:
+                raise DAOError("El empleado ya recibió otra cuenta. Revise los datos.")
+        usuario.id_usuario = nuevo_id
+        return usuario

@@ -1,4 +1,5 @@
 import sqlite3
+from contextlib import closing
 from src.dependencia import Administrador, Usuario
 from src.persistencia import DAOError, EmpleadoDAO, UsuarioDAO
 from tests.apoyo import BaseBD, CLAVE, HASH_PRUEBA, empleado
@@ -57,7 +58,15 @@ class CuentasYEmpleadosTest(BaseBD):
     def test_crud_empleado_recupera_todos_los_datos(self):
         persona = self.persona(nombre="José Muñoz")
         guardado = EmpleadoDAO.buscar_por_id(persona.id_empleado)
-        for campo in ("identificacion", "nombre", "correo", "direccion", "telefono", "salario", "fecha_inicio_contrato"):
+        for campo in (
+            "identificacion",
+            "nombre",
+            "correo",
+            "direccion",
+            "telefono",
+            "salario",
+            "fecha_inicio_contrato",
+        ):
             self.assertEqual(getattr(guardado, campo), getattr(persona, campo))
         persona.nombre = "José Muñoz Díaz"
         persona.salario = 950000
@@ -68,12 +77,22 @@ class CuentasYEmpleadosTest(BaseBD):
 
     def test_no_hay_datos_personales_en_claro_en_la_fila(self):
         persona = self.persona(nombre="NombreConfidencial", direccion="DireccionReservada987")
-        with sqlite3.connect(self.base) as conexion:
+        with closing(sqlite3.connect(self.base)) as conexion, conexion:
             fila = conexion.execute("SELECT * FROM empleado").fetchone()
-        for dato in (persona.nombre, persona.direccion, persona.correo, persona.identificacion, persona.telefono):
+        for dato in (
+            persona.nombre,
+            persona.direccion,
+            persona.correo,
+            persona.identificacion,
+            persona.telefono,
+        ):
             self.assertNotIn(dato, str(fila))
-        self.assertEqual(EmpleadoDAO.buscar_por_correo(persona.correo.upper()).id_empleado, persona.id_empleado)
-        self.assertEqual(EmpleadoDAO.buscar_por_identificacion("emp-0001").id_empleado, persona.id_empleado)
+        self.assertEqual(
+            EmpleadoDAO.buscar_por_correo(persona.correo.upper()).id_empleado, persona.id_empleado
+        )
+        self.assertEqual(
+            EmpleadoDAO.buscar_por_identificacion("emp-0001").id_empleado, persona.id_empleado
+        )
 
     def test_identificacion_y_correo_unicos_aunque_estan_cifrados(self):
         persona = self.persona()
@@ -93,7 +112,9 @@ class CuentasYEmpleadosTest(BaseBD):
     def test_cuenta_y_empleado_se_vinculan_y_desvinculan(self):
         cuenta, persona = self.cuenta(), self.persona()
         EmpleadoDAO.vincular_cuenta(persona.id_empleado, cuenta.id_usuario)
-        self.assertEqual(EmpleadoDAO.buscar_por_usuario(cuenta.id_usuario).id_empleado, persona.id_empleado)
+        self.assertEqual(
+            EmpleadoDAO.buscar_por_usuario(cuenta.id_usuario).id_empleado, persona.id_empleado
+        )
         EmpleadoDAO.desvincular_cuenta(persona.id_empleado)
         self.assertIsNone(EmpleadoDAO.buscar_por_usuario(cuenta.id_usuario))
         self.assertIsNotNone(UsuarioDAO.buscar_por_id(cuenta.id_usuario))
@@ -110,7 +131,9 @@ class CuentasYEmpleadosTest(BaseBD):
         EmpleadoDAO.vincular_cuenta(persona.id_empleado, uno.id_usuario)
         with self.assertRaises(DAOError):
             EmpleadoDAO.vincular_cuenta(persona.id_empleado, dos.id_usuario)
-        self.assertEqual(EmpleadoDAO.buscar_por_id(persona.id_empleado).usuario.id_usuario, uno.id_usuario)
+        self.assertEqual(
+            EmpleadoDAO.buscar_por_id(persona.id_empleado).usuario.id_usuario, uno.id_usuario
+        )
 
     def test_desactivar_conserva_empleado_y_borrar_empleado_conserva_cuenta(self):
         cuenta, persona = self.cuenta(), self.persona()
@@ -149,4 +172,6 @@ class CuentasYEmpleadosTest(BaseBD):
         EmpleadoDAO.vincular_cuenta(persona.id_empleado, cuenta.id_usuario)
         persona.nombre = "Nombre corregido"
         EmpleadoDAO.actualizar(persona)
-        self.assertEqual(EmpleadoDAO.buscar_por_id(persona.id_empleado).usuario.id_usuario, cuenta.id_usuario)
+        self.assertEqual(
+            EmpleadoDAO.buscar_por_id(persona.id_empleado).usuario.id_usuario, cuenta.id_usuario
+        )

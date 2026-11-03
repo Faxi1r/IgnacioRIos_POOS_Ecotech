@@ -1,4 +1,5 @@
 """Prepara las tablas del UML. La semilla se carga por separado."""
+
 from src.dependencia.seguridad import Seguridad
 from .conexion import obtener_motor, marcador_sql
 from .dao_util import DAOError, sesion_bd
@@ -9,7 +10,8 @@ TABLAS_SQLITE = [
     """CREATE TABLE IF NOT EXISTS usuario (
         id_usuario INTEGER PRIMARY KEY AUTOINCREMENT,
         nombre_usuario TEXT NOT NULL UNIQUE, contrasena_hash TEXT NOT NULL,
-        activo INTEGER NOT NULL DEFAULT 1 CHECK (activo IN (0, 1)))""",
+        activo INTEGER NOT NULL DEFAULT 1 CHECK (activo IN (0, 1)),
+        rol TEXT NOT NULL DEFAULT 'empleado' CHECK (rol IN ('admin', 'empleado')))""",
     """CREATE TABLE IF NOT EXISTS administrador (
         id_usuario INTEGER PRIMARY KEY,
         FOREIGN KEY (id_usuario) REFERENCES usuario(id_usuario) ON DELETE RESTRICT)""",
@@ -49,7 +51,8 @@ TABLAS_MYSQL = [
     """CREATE TABLE IF NOT EXISTS usuario (
         id_usuario INT PRIMARY KEY AUTO_INCREMENT, nombre_usuario VARCHAR(40) NOT NULL UNIQUE,
         contrasena_hash VARCHAR(255) NOT NULL, activo BOOLEAN NOT NULL DEFAULT TRUE,
-        CHECK (activo IN (0, 1))) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+        CHECK (activo IN (0, 1)),
+        rol VARCHAR(10) NOT NULL DEFAULT 'empleado' CHECK (rol IN ('admin', 'empleado'))) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
     """CREATE TABLE IF NOT EXISTS administrador (
         id_usuario INT PRIMARY KEY,
         FOREIGN KEY (id_usuario) REFERENCES usuario(id_usuario) ON DELETE RESTRICT)
@@ -95,34 +98,55 @@ def crear_tablas() -> None:
     seguridad = Seguridad()
     with sesion_bd() as cursor:
         if es_mysql:
-            cursor.execute("SELECT COLUMN_NAME FROM information_schema.COLUMNS "
-                           "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'usuario'")
+            cursor.execute(
+                "SELECT COLUMN_NAME FROM information_schema.COLUMNS "
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'usuario'"
+            )
             columnas = [fila[0] for fila in cursor.fetchall()]
         else:
             cursor.execute("PRAGMA table_info(usuario)")
             columnas = [fila[1] for fila in cursor.fetchall()]
         if columnas and "activo" not in columnas:
-            raise DAOError("Esta base es de una versión anterior. Use una base nueva: ecotech_uml8.")
+            raise DAOError(
+                "Esta base es de una versión anterior. Use una base nueva: ecotech_uml8."
+            )
         for sentencia in (TABLAS_MYSQL if es_mysql else TABLAS_SQLITE):
             cursor.execute(sentencia)
         if es_mysql:
             cursor.execute(
                 "SELECT 1 FROM information_schema.TABLE_CONSTRAINTS "
                 "WHERE CONSTRAINT_SCHEMA = DATABASE() AND TABLE_NAME = 'departamento' "
-                "AND CONSTRAINT_NAME = 'fk_departamento_gerente'")
+                "AND CONSTRAINT_NAME = 'fk_departamento_gerente'"
+            )
             if cursor.fetchone() is None:
                 cursor.execute(
                     "ALTER TABLE departamento ADD CONSTRAINT fk_departamento_gerente "
-                    "FOREIGN KEY (id_gerente) REFERENCES empleado(id_empleado) ON DELETE RESTRICT")
+                    "FOREIGN KEY (id_gerente) REFERENCES empleado(id_empleado) ON DELETE RESTRICT"
+                )
         # La base guarda una comprobación para detectar una clave cambiada por error.
         cursor.execute("SELECT valor FROM configuracion WHERE clave = 'control_cifrado'")
         fila = cursor.fetchone()
         if fila is None:
             p = marcador_sql()
-            cursor.execute(f"INSERT INTO configuracion (clave, valor) VALUES ({p}, {p})",
-                           ("control_cifrado", seguridad.cifrar("EcoTech UML 8")))
+            cursor.execute(
+                f"INSERT INTO configuracion (clave, valor) VALUES ({p}, {p})",
+                ("control_cifrado", seguridad.cifrar("EcoTech UML 8")),
+            )
         elif seguridad.descifrar(fila[0]) != "EcoTech UML 8":
             raise DAOError("La clave de cifrado no corresponde a esta base.")
+
+        # Solo la versión anterior a esta clase necesita agregar la columna.
+        # Conservamos qué cuentas ya eran administradoras; no elegimos nuevos admins.
+        if columnas and "rol" not in columnas:
+            tipo = "VARCHAR(10)" if es_mysql else "TEXT"
+            cursor.execute(
+                f"ALTER TABLE usuario ADD COLUMN rol {tipo} NOT NULL "
+                "DEFAULT 'empleado' CHECK (rol IN ('admin', 'empleado'))"
+            )
+            cursor.execute(
+                "UPDATE usuario SET rol = 'admin' WHERE id_usuario IN "
+                "(SELECT id_usuario FROM administrador)"
+            )
 
 
 if __name__ == "__main__":

@@ -2,6 +2,7 @@ import io
 import os
 import shutil
 import sqlite3
+from contextlib import closing
 import subprocess
 import sys
 import tempfile
@@ -24,8 +25,17 @@ class IntegracionTest(BaseBD):
         with patch("sys.stdout", io.StringIO()):
             uno, dos = cargar_semilla(), cargar_semilla()
         self.assertEqual(uno, dos)
-        self.assertEqual(uno, {"usuarios": 2, "empleados": 2, "departamentos": 1,
-                              "proyectos": 1, "registros": 2, "informes": 1})
+        self.assertEqual(
+            uno,
+            {
+                "usuarios": 3,
+                "empleados": 3,
+                "departamentos": 1,
+                "proyectos": 1,
+                "registros": 2,
+                "informes": 1,
+            },
+        )
 
     def test_demo_conserva_la_base_y_restaurar_configuracion(self):
         self.persona()
@@ -39,31 +49,43 @@ class IntegracionTest(BaseBD):
     def test_otra_ejecucion_recupera_los_datos(self):
         self.persona(nombre="Persona Persistente")
         codigo = "from src.persistencia import EmpleadoDAO; print(EmpleadoDAO.listar()[0].nombre)"
-        resultado = subprocess.run([sys.executable, "-c", codigo], cwd=RAIZ, text=True, capture_output=True)
+        resultado = subprocess.run(
+            [sys.executable, "-c", codigo], cwd=RAIZ, text=True, capture_output=True
+        )
         self.assertEqual(resultado.returncode, 0, resultado.stderr)
         self.assertIn("Persona Persistente", resultado.stdout)
 
     def test_entrada_directa_funciona_desde_otra_carpeta(self):
-        resultado = subprocess.run([sys.executable, str(RAIZ / "src/main.py"), "--comprobar-conexion"],
-                                   cwd=self.carpeta, text=True, capture_output=True)
+        resultado = subprocess.run(
+            [sys.executable, str(RAIZ / "src/main.py"), "--comprobar-conexion"],
+            cwd=self.carpeta,
+            text=True,
+            capture_output=True,
+        )
         self.assertEqual(resultado.returncode, 0, resultado.stderr)
         self.assertIn("Motor: sqlite", resultado.stdout)
 
     def test_demo_y_login_por_consola_terminan_correctamente(self):
-        resultado = subprocess.run([sys.executable, "-m", "src.main", "--demo"],
-                                   cwd=RAIZ, text=True, capture_output=True)
+        resultado = subprocess.run(
+            [sys.executable, "-m", "src.main", "--demo"], cwd=RAIZ, text=True, capture_output=True
+        )
         self.assertEqual(resultado.returncode, 0, resultado.stdout + resultado.stderr)
         self.assertIn("Demostración correcta", resultado.stdout)
         with patch("sys.stdout", io.StringIO()):
             cargar_semilla()
-        resultado = subprocess.run([sys.executable, "-m", "src.main"], cwd=RAIZ, text=True,
-                                   input="admin_demo\nDemo2026*\n0\n", capture_output=True)
+        resultado = subprocess.run(
+            [sys.executable, "-m", "src.main"],
+            cwd=RAIZ,
+            text=True,
+            input="admin_demo\nDemo2026*\n0\n",
+            capture_output=True,
+        )
         self.assertEqual(resultado.returncode, 0, resultado.stdout + resultado.stderr)
         self.assertIn("Bienvenido, admin_demo", resultado.stdout)
 
     def test_base_antigua_se_rechaza_sin_borrarla(self):
         antigua = self.carpeta / "antigua.db"
-        with sqlite3.connect(antigua) as conexion:
+        with closing(sqlite3.connect(antigua)) as conexion, conexion:
             conexion.execute("CREATE TABLE usuario (id_usuario INTEGER, nombre TEXT)")
             conexion.execute("INSERT INTO usuario VALUES (1, 'Conservar')")
         antes = antigua.read_bytes()

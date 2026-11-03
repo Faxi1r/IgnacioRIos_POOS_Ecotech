@@ -9,8 +9,11 @@ from tests.apoyo import BaseBD, empleado
 
 
 def respuesta_ejemplo():
-    return {"codigo": "dolar", "unidad_medida": "Pesos",
-            "serie": [{"fecha": "2026-01-02T00:00:00Z", "valor": 900.0}]}
+    return {
+        "codigo": "dolar",
+        "unidad_medida": "Pesos",
+        "serie": [{"fecha": "2026-01-02T00:00:00Z", "valor": 900.0}],
+    }
 
 
 class ValidacionesU3Test(unittest.TestCase):
@@ -28,8 +31,15 @@ class ValidacionesU3Test(unittest.TestCase):
 
     def test_correo(self):
         self.assertEqual(Empleado.validar_correo(" ANA@EMPRESA.CL "), "ana@empresa.cl")
-        for correo in ("anaempresa.cl", "ana@empresa..cl", "ana@.cl", "ana@empresa.cl.",
-                       "ana @empresa.cl", "ana@@empresa.cl", "@empresa.cl"):
+        for correo in (
+            "anaempresa.cl",
+            "ana@empresa..cl",
+            "ana@.cl",
+            "ana@empresa.cl.",
+            "ana @empresa.cl",
+            "ana@@empresa.cl",
+            "@empresa.cl",
+        ):
             with self.subTest(correo=correo), self.assertRaises(ValueError):
                 Empleado.validar_correo(correo)
 
@@ -62,12 +72,21 @@ class PersistenciaU3Test(BaseBD):
             Empleado.validar_correo(correo + "x")
 
     def test_correo_invalido_no_repite_nombre(self):
-        entradas = ["EMP0001", "Ana Torres", "ana@empresa..cl", "ana@empresa.cl",
-                    "900000", "Calle 123", "+56912345678", "2026-01-02"]
+        sesion = self.sesion()
+        entradas = [
+            "EMP0001",
+            "Ana Torres",
+            "ana@empresa..cl",
+            "ana@empresa.cl",
+            "900000",
+            "Calle 123",
+            "+56912345678",
+            "2026-01-02",
+        ]
         with patch("builtins.input", side_effect=entradas) as leer, patch("builtins.print"):
-            menu_empleado.registrar_empleado()
+            menu_empleado.registrar_empleado(sesion)
         self.assertEqual(leer.call_count, 8)
-        self.assertEqual(EmpleadoDAO.listar()[0].nombre, "Ana Torres")
+        self.assertEqual(EmpleadoDAO.buscar_por_identificacion("EMP0001").nombre, "Ana Torres")
 
 
 class IndicadoresU3Test(unittest.TestCase):
@@ -79,7 +98,9 @@ class IndicadoresU3Test(unittest.TestCase):
         datos["serie"] = []
         with self.assertRaises(ValueError):
             extraer_primero(datos)
-        with patch("src.menus.menu_indicadores.obtener_datos", return_value=datos), patch("builtins.print") as mostrar:
+        with patch("src.menus.menu_indicadores.obtener_datos", return_value=datos), patch(
+            "builtins.print"
+        ) as mostrar:
             menu_indicadores.consultar_dolar()
         self.assertIn("No hay valores disponibles", mostrar.call_args.args[0])
 
@@ -114,19 +135,25 @@ class IndicadoresU3Test(unittest.TestCase):
         self.assertEqual([c[0] for c in respuesta.mock_calls], ["raise_for_status", "json"])
         respuesta.reset_mock()
         respuesta.raise_for_status.side_effect = requests.HTTPError("Fallo HTTP")
-        with patch("src.indicadores.requests.get", return_value=respuesta), self.assertRaises(requests.HTTPError):
+        with patch("src.indicadores.requests.get", return_value=respuesta), self.assertRaises(
+            requests.HTTPError
+        ):
             obtener_datos()
         respuesta.json.assert_not_called()
 
     def test_errores_de_red_y_json_controlados(self):
         errores = [requests.Timeout(), requests.exceptions.JSONDecodeError("JSON inválido", "x", 0)]
         for error in errores:
-            with patch("src.menus.menu_indicadores.obtener_datos", side_effect=error), patch("builtins.print") as mostrar:
+            with patch("src.menus.menu_indicadores.obtener_datos", side_effect=error), patch(
+                "builtins.print"
+            ) as mostrar:
                 menu_indicadores.consultar_dolar()
             self.assertIn("No pudimos consultar", mostrar.call_args.args[0])
 
     def test_salida_con_contexto(self):
-        with patch("src.menus.menu_indicadores.obtener_datos", return_value=respuesta_ejemplo()), patch("builtins.print") as mostrar:
+        with patch(
+            "src.menus.menu_indicadores.obtener_datos", return_value=respuesta_ejemplo()
+        ), patch("builtins.print") as mostrar:
             menu_indicadores.consultar_dolar()
         texto = " ".join(c.args[0] for c in mostrar.call_args_list)
         for dato in ("900.00 CLP por USD", "2026-01-02", URL_DOLAR):
@@ -136,22 +163,29 @@ class IndicadoresU3Test(unittest.TestCase):
 class IntegracionMenuU3Test(BaseBD):
     def test_editar_nombre_reintenta(self):
         persona = self.persona()
+        sesion = self.sesion()
         respuestas = [str(persona.id_empleado), "n", "A", "Ana Nueva", "", "n", "n", "n", "n"]
         with patch("builtins.input", side_effect=respuestas), patch("builtins.print"):
-            menu_empleado.actualizar_empleado()
+            menu_empleado.actualizar_empleado(sesion)
         self.assertEqual(EmpleadoDAO.buscar_por_id(persona.id_empleado).nombre, "Ana Nueva")
 
-    def test_administrador_consulta_desde_opcion_siete(self):
+    def test_administrador_consulta_desde_opcion_tres(self):
         from src import main
+
         cuenta = self.cuenta(admin=True)
-        with patch("builtins.input", side_effect=["7", "0"]), patch("builtins.print"), patch("src.main.consultar_dolar") as consultar:
-            main.menu_principal(cuenta)
+        sesion = self.sesion(cuenta)
+        with patch("builtins.input", side_effect=["3", "0"]), patch("builtins.print"), patch(
+            "src.main.consultar_dolar"
+        ) as consultar:
+            main.menu_principal(sesion)
         consultar.assert_called_once_with()
 
-    def test_usuario_comun_no_abre_consulta_administrativa(self):
+    def test_empleado_tambien_puede_consultar_api_segun_clase5(self):
         from src import main
-        cuenta = self.cuenta()
-        with patch("src.main.menu_personal") as personal, patch("src.main.consultar_dolar") as consultar:
-            main.menu_principal(cuenta)
-        personal.assert_called_once_with(cuenta)
-        consultar.assert_not_called()
+
+        sesion = self.sesion(self.cuenta())
+        with patch("builtins.input", side_effect=["3", "0"]), patch("builtins.print"), patch(
+            "src.main.consultar_dolar"
+        ) as consultar:
+            main.menu_principal(sesion)
+        consultar.assert_called_once_with()

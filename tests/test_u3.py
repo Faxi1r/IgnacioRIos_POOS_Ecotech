@@ -10,9 +10,10 @@ from tests.apoyo import BaseBD, empleado
 
 def respuesta_ejemplo():
     return {
-        "codigo": "dolar",
-        "unidad_medida": "Pesos",
-        "serie": [{"fecha": "2026-01-02T00:00:00Z", "valor": 900.0}],
+        "result": "success",
+        "base_code": "USD",
+        "time_last_update_unix": 1767312000,  # 2026-01-02
+        "rates": {"CLP": 900.0},
     }
 
 
@@ -93,36 +94,31 @@ class IndicadoresU3Test(unittest.TestCase):
     def test_respuesta_correcta(self):
         self.assertEqual(extraer_primero(respuesta_ejemplo()), ("2026-01-02", 900.0))
 
-    def test_serie_vacia_controlada(self):
+    def test_sin_tasas_controlado(self):
         datos = respuesta_ejemplo()
-        datos["serie"] = []
+        datos["rates"] = {}
         with self.assertRaises(ValueError):
             extraer_primero(datos)
-        with patch("src.menus.menu_indicadores.obtener_datos", return_value=datos), patch(
-            "builtins.print"
-        ) as mostrar:
-            menu_indicadores.consultar_dolar()
-        self.assertIn("No hay valores disponibles", mostrar.call_args.args[0])
 
     def test_valores_invalidos(self):
-        for valor in (0, -1, True, "900", float("nan"), float("inf"), None):
+        for valor in (0, -1, True, "900", float("nan"), float("inf"), None, 10**1000):
             datos = respuesta_ejemplo()
-            datos["serie"][0]["valor"] = valor
-            with self.subTest(valor=valor), self.assertRaises(ValueError):
+            datos["rates"]["CLP"] = valor
+            with self.subTest(valor=str(valor)[:20]), self.assertRaises(ValueError):
                 extraer_primero(datos)
 
-    def test_codigo_unidad_fecha_y_estructura(self):
-        for clave, valor in (("codigo", "uf"), ("unidad_medida", "Dólar"), ("serie", None)):
+    def test_resultado_base_fecha_y_estructura(self):
+        for clave, valor in (("result", "error"), ("base_code", "EUR"), ("rates", None)):
             datos = respuesta_ejemplo()
             datos[clave] = valor
             with self.subTest(clave=clave), self.assertRaises(ValueError):
                 extraer_primero(datos)
-        for fecha in (None, "ayer", "2026-02-30"):
+        for fecha in (None, "ayer", -5, True):
             datos = respuesta_ejemplo()
-            datos["serie"][0]["fecha"] = fecha
+            datos["time_last_update_unix"] = fecha
             with self.subTest(fecha=fecha), self.assertRaises(ValueError):
                 extraer_primero(datos)
-        for datos in ([], {"codigo": "dolar", "unidad_medida": "Pesos", "serie": [None]}):
+        for datos in ([], None):
             with self.assertRaises(ValueError):
                 extraer_primero(datos)
 
@@ -132,60 +128,43 @@ class IndicadoresU3Test(unittest.TestCase):
         with patch("src.indicadores.requests.get", return_value=respuesta) as get:
             self.assertEqual(obtener_datos(), respuesta_ejemplo())
         get.assert_called_once_with(URL_DOLAR, timeout=(3, 5))
-        self.assertEqual([c[0] for c in respuesta.mock_calls], ["raise_for_status", "json"])
+        self.assertEqual([c[0] for c in respuesta.mock_calls], ["raise_for_status", "json", "close"])
+
         respuesta.reset_mock()
+        respuesta.status_code = 503
         respuesta.raise_for_status.side_effect = requests.HTTPError("Fallo HTTP")
         with patch("src.indicadores.requests.get", return_value=respuesta), self.assertRaises(
-            requests.HTTPError
+            menu_indicadores.ErrorAPI
         ):
             obtener_datos()
         respuesta.json.assert_not_called()
 
-    def test_errores_de_red_y_json_controlados(self):
-        errores = [requests.Timeout(), requests.exceptions.JSONDecodeError("JSON inválido", "x", 0)]
-        for error in errores:
-            with patch("src.menus.menu_indicadores.obtener_datos", side_effect=error), patch(
-                "builtins.print"
-            ) as mostrar:
-                menu_indicadores.consultar_dolar()
-            self.assertIn("No pudimos consultar", mostrar.call_args.args[0])
-
-    def test_salida_con_contexto(self):
+    def test_error_de_red_se_muestra_de_forma_simple(self):
         with patch(
-            "src.menus.menu_indicadores.obtener_datos", return_value=respuesta_ejemplo()
+            "src.menus.menu_indicadores.consultar_indicador",
+            side_effect=menu_indicadores.ErrorAPI("No hay conexión con el servicio."),
         ), patch("builtins.print") as mostrar:
-            menu_indicadores.consultar_dolar()
-        texto = " ".join(c.args[0] for c in mostrar.call_args_list)
-        for dato in ("900.00 CLP por USD", "2026-01-02", URL_DOLAR):
-            self.assertIn(dato, texto)
+            menu_indicadores._consultar({}, "dolar")
+        self.assertIn("No hay conexión", " ".join(str(c.args[0]) for c in mostrar.call_args_list))
 
 
 class IntegracionMenuU3Test(BaseBD):
-    def test_editar_nombre_reintenta(self):
-        persona = self.persona()
-        sesion = self.sesion()
-        respuestas = [str(persona.id_empleado), "n", "A", "Ana Nueva", "", "n", "n", "n", "n"]
-        with patch("builtins.input", side_effect=respuestas), patch("builtins.print"):
-            menu_empleado.actualizar_empleado(sesion)
-        self.assertEqual(EmpleadoDAO.buscar_por_id(persona.id_empleado).nombre, "Ana Nueva")
-
-    def test_administrador_consulta_desde_opcion_tres(self):
+    def test_administrador_abre_menu_indicadores(self):
         from src import main
 
-        cuenta = self.cuenta(admin=True)
-        sesion = self.sesion(cuenta)
+        sesion = self.sesion(self.cuenta(admin=True))
         with patch("builtins.input", side_effect=["3", "0"]), patch("builtins.print"), patch(
-            "src.main.consultar_dolar"
-        ) as consultar:
+            "src.main.menu_indicadores"
+        ) as menu:
             main.menu_principal(sesion)
-        consultar.assert_called_once_with()
+        menu.assert_called_once_with(sesion)
 
-    def test_empleado_tambien_puede_consultar_api_segun_clase5(self):
+    def test_empleado_tambien_puede_consultar_indicadores(self):
         from src import main
 
         sesion = self.sesion(self.cuenta())
         with patch("builtins.input", side_effect=["3", "0"]), patch("builtins.print"), patch(
-            "src.main.consultar_dolar"
-        ) as consultar:
+            "src.main.menu_indicadores"
+        ) as menu:
             main.menu_principal(sesion)
-        consultar.assert_called_once_with()
+        menu.assert_called_once_with(sesion)

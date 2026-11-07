@@ -1,0 +1,12 @@
+sé Claude (IA) como apoyo durante el proyecto, sobre todo para sugerencias, análisis del código y propuestas de cambio. No lo usé para que hiciera todo, sino para revisar mi trabajo y entender mejor las partes más difíciles de lógica.
+
+En qué me ayudó:
+
+Cambio de API: la API que usaba (mindicador) se caía mucho. Le pedí que me analizara el problema y me sugiriera una alternativa más estable, y así cambié a ExchangeRate-API. Eso implicó cambiar cómo se leen los datos y quitar la UF, porque la nueva API no la tiene.
+Manejo de errores: me sugirió separar los errores de conexión, timeout y códigos HTTP (400, 404, 429, 500), y mostrar mensajes claros al usuario sin exponer detalles técnicos.
+Respaldo de datos: me propuso que, si la API falla, el programa muestre el último valor guardado en la base de datos y avise que no es una consulta nueva.
+Propiedades y validaciones: me ayudó a entender cómo usar @property y setters con validación en clases como Empleado, Proyecto y RegistroDeTiempo, para que no se guarden datos inválidos, como horas negativas o correos mal escritos.
+Lógica de Departamento: me explicó las reglas del gerente, que debe pertenecer al departamento, y de agregar y quitar empleados sin dejar datos inconsistentes.
+Seguridad: me ayudó a entender la diferencia entre hashear contraseñas (PBKDF2) y cifrar datos personales (Fernet), y por qué no se mezclan.
+Conversión de montos: me sugirió usar Decimal en vez de float para evitar errores de redondeo, y validar el monto antes de calcular.
+Revisión y UML: me sirvió para detectar errores en mi diagrama UML, como asociaciones sin dirección y atributos fuera de orden, y para comparar el diagrama con el código real.

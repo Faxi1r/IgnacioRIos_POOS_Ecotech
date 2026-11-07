@@ -18,7 +18,7 @@ from src.menus.menu_usuario import menu_usuario
 from src.menus.menu_empleado import pedir_datos_empleado
 from src.menus.comunes import pedir_nombre_usuario_nuevo, pedir_contrasena, ejecutar
 from src.menus.menu_personal import menu_personal, ver_mis_datos, ver_mis_horas
-from src.menus.menu_indicadores import consultar_dolar
+from src.menus.menu_indicadores import menu_indicadores
 from src.menus.comunes import acceso_vigente
 from src.servicios.autenticacion import autenticar, cerrar_sesion
 from src.servicios.preparacion import crear_admin_inicial
@@ -41,7 +41,7 @@ def menu_principal(sesion):
     opciones = {
         "1": ("Mi ficha", lambda: ver_mis_datos(sesion)),
         "2": ("Mis registros", lambda: ver_mis_horas(sesion)),
-        "3": ("Consultar dólar observado", consultar_dolar),
+        "3": ("Indicadores financieros", lambda: menu_indicadores(sesion)),
         "11": ("Editar mis datos y otras opciones personales", lambda: menu_personal(sesion)),
     }
     if sesion["rol"] == "admin":

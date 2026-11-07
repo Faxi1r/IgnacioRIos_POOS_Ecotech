@@ -43,6 +43,12 @@ TABLAS_SQLITE = [
         id_informe INTEGER PRIMARY KEY AUTOINCREMENT, tipo TEXT NOT NULL,
         fecha_generacion TEXT NOT NULL, contenido TEXT NOT NULL, creado_por INTEGER NOT NULL,
         FOREIGN KEY (creado_por) REFERENCES administrador(id_usuario) ON DELETE RESTRICT)""",
+    """CREATE TABLE IF NOT EXISTS indicador_api (
+        id_indicador INTEGER PRIMARY KEY AUTOINCREMENT,
+        fuente TEXT NOT NULL, codigo TEXT NOT NULL, fecha TEXT NOT NULL,
+        valor REAL NOT NULL CHECK (valor > 0), unidad TEXT NOT NULL,
+        verificado_en TEXT NOT NULL,
+        UNIQUE (fuente, codigo, fecha))""",
 ]
 
 TABLAS_MYSQL = [
@@ -90,6 +96,13 @@ TABLAS_MYSQL = [
         fecha_generacion DATE NOT NULL, contenido LONGTEXT NOT NULL, creado_por INT NOT NULL,
         FOREIGN KEY (creado_por) REFERENCES administrador(id_usuario) ON DELETE RESTRICT)
         ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+    """CREATE TABLE IF NOT EXISTS indicador_api (
+        id_indicador INT PRIMARY KEY AUTO_INCREMENT,
+        fuente VARCHAR(80) NOT NULL, codigo VARCHAR(10) NOT NULL,
+        fecha DATE NOT NULL, valor DECIMAL(18,6) NOT NULL,
+        unidad VARCHAR(40) NOT NULL, verificado_en DATETIME NOT NULL,
+        UNIQUE KEY uq_indicador_fuente_codigo_fecha (fuente, codigo, fecha),
+        CHECK (valor > 0)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
 ]
 
 

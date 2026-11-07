@@ -8,6 +8,7 @@ from .informe import Informe
 from .seguridad import Seguridad
 
 __all__ = [
+    "Indicador",
     "Usuario",
     "Administrador",
     "Empleado",
@@ -17,3 +18,4 @@ __all__ = [
     "Informe",
     "Seguridad",
 ]
+

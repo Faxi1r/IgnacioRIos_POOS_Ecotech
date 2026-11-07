@@ -12,6 +12,7 @@ from src.persistencia.dao_util import sesion_bd
 
 
 class ConexionTest(unittest.TestCase):
+    @unittest.skipIf(conexion.pymysql is None, "Instale PyMySQL para probar el conector MySQL")
     def test_configuracion_mysql_se_envia_al_conector_sin_reemplazar_el_motor(self):
         entorno = {
             "DB_ENGINE": "mysql",
@@ -29,6 +30,7 @@ class ConexionTest(unittest.TestCase):
         self.assertEqual(argumentos["user"], "estudiante")
         self.assertFalse(argumentos["autocommit"])
 
+    @unittest.skipIf(conexion.pymysql is None, "Instale PyMySQL para probar el conector MySQL")
     def test_error_mysql_no_recurre_a_sqlite(self):
         with patch.dict(os.environ, {"DB_ENGINE": "mysql"}), patch.object(
             conexion.pymysql,
